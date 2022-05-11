@@ -12,7 +12,7 @@ import sys
 import time
 import math
 import random
-co# Define the motor pins.
+# Define the motor pins.
 MTR1_LEGA = 7   #right
 MTR1_LEGB = 8
 MTR2_LEGA = 5   #left
@@ -76,7 +76,7 @@ def intersection(long, lat):
     if len(list) == 0:
         return None
     if len(list) > 1:
-        raise Exception("Multiple intersections at (%2d, %2d" % (long, lat))
+        raise Exception("Multiple intersections at (%2d, %2d)" % (long, lat))
     return list[0]
 
 class Intersection:
@@ -242,7 +242,7 @@ class Motor:
                 elif dir < 0:
                     self.set(380*slope, -380*slope)
                 ir_center_state = self.io.read(IR_CENTER)
-                if (time.time() - starttime > rightturntime):
+                if (time.time() - starttime > rightturntime+0.05):
                     turning2 = False
             
         self.setvel(0,0)
@@ -462,16 +462,11 @@ if __name__ == "__main__":
     def headback():
         global intersections
         global heading
-        print("headback() Beginning. Heading is: ", heading)
+        print("heading back")
         for i in range(len(intersections)-1, 0,-1):
             # print("heading: ", heading)
-            print("I believe my current heading is: ", heading, " but is it?")
             motor.spintonextline((intersections[i].headingToTarget - heading)%4)
-            print("I want to be facing ", intersections[i].headingToTarget, " but am i?")
-            print("I should have spun by ", (intersections[i].headingToTarget - heading)%4)
-            print("I have spun to the next line. Beginning for loop heading: ", heading)
             heading = intersections[i].headingToTarget
-            print("end for loop heading: ", heading)
             motor.linefollow()
         motor.spintonextline((SOUTH-heading)%4)
         heading = SOUTH
@@ -479,61 +474,63 @@ if __name__ == "__main__":
             
     def trackmap():
         motor.linefollow()
-        time.sleep(0.2)
         global heading
         global long
         global lat
         global lastintersection
         (long, lat) = shift(long, lat, heading)
+        print("Currently at (%2d, %2d)" % (long, lat))
         global intersections
         if intersection(long, lat) == None:
-            inter = Intersection(lat, long)
+            inter = Intersection(long, lat)
             intersections.append(inter) # append
             paths = motor.spincheck()
             inter.streets = convertabsolute(paths)
-            if lastintersection != None:
-                lastintersection.streets[heading] = CONNECTED
-                inter.streets[(heading+2)%4] = CONNECTED
-                inter.headingToTarget = (heading+2)%4
-                print("headingToTarget: ", inter.headingToTarget)
+        if lastintersection != None:
+            inter = intersection(long,lat)
+            lastintersection.streets[heading] = CONNECTED
+            inter.streets[(heading+2)%4] = CONNECTED
+            inter.headingToTarget = (heading+2)%4
+            print("Current latitude: ", inter.lat, " and Current longitude: ", inter.long)
+            print("headingToTarget: ", inter.headingToTarget)
             
-            k = 0
-            for i in range(0,len(inter.streets)):
-                if inter.streets[i] == UNEXPLORED:
-                    k = i
-                    break
-            while inter.streets[k] == NOSTREET: # All streets are either NOSTREET or CONNECTED
-                k = random.randint(0,len(inter.streets)) # Must be a CONNECTED street
-            motor.spintonextline((k-heading)%4)
-            heading = k
-            
-                    
-#             k = random.randint(0,len(inter.streets))
-#             if inter.streets.indexof(UNEXPLORED) == -1 :
-#                 while inter.streets[k] == NOSTREET: # All streets are either NOSTREET or CONNECTED
-#                     k = random.randint(0,len(inter.streets)) # Must be a CONNECTED street
-#             else: # ALL STREETS MUST BE UNEXPLORED, CONNECTED, OR NOSTREET
-#                 while inter.streets[k] == NOSTREET or inter.streets[k] == CONNECTED: # All streets are either UNEXPLORED or CONNECTED
-#                     k = random.randint(0,len(inter.streets))
+#             k = 0
+#             for i in range(0,len(inter.streets)):
+#                 if inter.streets[i] == UNEXPLORED:
+#                     k = i
+#                     break
+#             while inter.streets[k] == NOSTREET: # All streets are either NOSTREET or CONNECTED
+#                 k = random.randint(0,len(inter.streets)-1) # Must be a CONNECTED street
 #             motor.spintonextline((k-heading)%4)
 #             heading = k
-            
-            # if unexplored exists, choose unexplored
-            # otherwise choose connected
-            
-            
-#             for k in range(0,len(inter.streets)):
-#                 if inter.streets[k] == UNEXPLORED: # or inter.streets[k] == CONNECTED:
-#                     motor.spintonextline((k-heading)%4)
-#                     heading = k
-#                     break
-            lastintersection = inter
-        print("stop trackmap")
+#             lastintersection = inter
+        
+        k = random.randint(0,len(intersection(long,lat).streets)-1)
+        for i in range(0,len(intersection(long,lat).streets)):
+            if intersection(long,lat).streets[i] == UNEXPLORED:
+                k = i
+                break
+        while intersection(long,lat).streets[k] == NOSTREET: # All streets are either NOSTREET or CONNECTED
+            k = random.randint(0,len(intersection(long,lat).streets)-1) # Must be a CONNECTED street
+        motor.spintonextline((k-heading)%4)
+        heading = k
+        lastintersection = intersection(long,lat)
+        print(intersection(long,lat).streets)
 
-    trackmap()
-    trackmap()
-    trackmap()
-#     # print(intersections)
-    headback()
-
-    motor.shutdown()   
+    try:
+        allConnected = False
+        while allConnected == False:
+            allconnected = True
+            for i in intersections:
+                for s in i.streets:
+                    if s == UNEXPLORED or s == UNKNOWN:
+                        allconnected = False
+                        print("This intersection still has unexplored or unknown:", i.long, i.lat)
+                        print(i.streets.index(s))
+            trackmap()
+        headback()
+        motor.shutdown()
+    except KeyboardInterrupt:
+        motor.setvel(0,0)
+        print("KeyboardInterrupt")
+        

@@ -42,7 +42,6 @@ long = 0 # current east/west coordinate
 lat = -1 # current north/south coordinate
 heading = NORTH # current heading
 
-# Kevin's stuff
 turning = False
 turning2 = False
 rightturntime = 0.6
@@ -212,7 +211,6 @@ class Motor:
         turning = True
         while time.time()-starttime < rightturntime and turning == True:
             continue
-        # heading = ??
         self.setvel(0,0)
         time.sleep(0.2)
         if not turning:
@@ -225,9 +223,7 @@ class Motor:
         global rightturntime
         global turning2
         slope = 1/469.19
-#         self.set(470*slope, -470*slope) # overcome motor stickiness
-#         time.sleep(0.1)
-
+        
         if dir == 3:
             dir = -1
         elif dir == -3:
@@ -248,61 +244,6 @@ class Motor:
         self.setvel(0,0)
         time.sleep(0.2)
 
-#     def spincheck(self):
-#         """
-#         Speed is given in degrees per second.
-#         Turning left is denoted by 1 or -3
-#         Turning rihgt is denoted by 3 or -1
-#         Turning backward is denoted by 2 or -2
-#         No turn is denoted by a 0
-#         A positive number corresponds to a left spin and a negative number corresponds to a right spin
-#         Note that the shorter turning path is chosen, so a 3 corresponds to a -1 and a -3 corresponds to a 1
-#         """
-#         slope = 1/469.19
-#         self.set(470*slope, -470*slope) # overcome motor stickiness
-#         time.sleep(0.01)
-#         
-#         #start a timer
-#         starttime = time.time()
-#         time_full_rot = 0.58
-#         time_360 = 0
-#         counter = 0
-#         intersectiontimes = []
-#         last_center_reading = 0
-#         while(time_360 < time_full_rot):
-#             self.set(380*slope, -380*slope) # spin for 360 degrees
-#             ir_left_state = self.io.read(IR_LEFT)
-#             ir_center_state = self.io.read(IR_CENTER)
-#             ir_right_state = self.io.read(IR_RIGHT)
-#             if ir_center_state == 1:
-#                 if last_center_reading == 0:
-#                     counter += 1
-#                     time_enter = time.time()
-#                 last_center_reading = 1
-#             elif ir_center_state == 0:
-#                 if last_center_reading == 1:
-#                     counter += 1
-#                     time_exit = time.time()
-#                     intersectiontimes.append(((time_exit + time_enter)/2) - starttime)
-#                 last_center_reading = 0
-#             time_360 = time.time() - starttime
-#             
-#         self.setvel(0,0)
-#         time.sleep(0.5)
-#         
-#         # want [forward, left, backward, right]
-#         # reads [forward, right, back, left]
-
-#         print(intersectiontimes)
-#         paths = [False, False, False, False]
-#         for t in intersectiontimes:
-#             inter_num = round(4*t/time_full_rot)
-#             paths[inter_num] = True
-#         print("paths_2 ", paths)
-#         paths_reorder = [paths[0]]
-#         paths_reorder.extend(paths[len(paths):0:-1])
-#         return paths_reorder
-
     def spincheck(self):
         """
         Speed is given in degrees per second.
@@ -320,50 +261,51 @@ class Motor:
         for i in range(4):
             pathexist = self.turn_90() # pathexist is a boolean representing whether that pathway exists
             paths.append(pathexist)     
-        
-#         slope = 1/469.19
-#         self.set(470*slope, -470*slope) # overcome motor stickiness
-#         time.sleep(0.01)
-#         paths = []
-#         
-#         for i in range(4):
-#             starttime = time.time()
-#             self.set(380*slope, -380*slope)
-#             counter = 0
-#             last_center_reading = 1
-#             time_90 = 0
-#             time_rot = 0.565
-#             while(time_90 < time_rot):
-#                 ir_center_state = self.io.read(IR_CENTER)
-#                 if ir_center_state == 1:
-#                     if last_center_reading == 0:
-#                         counter += 1
-#                         paths.append(True)
-#                         break
-#                     last_center_reading = 1
-#                 elif ir_center_state == 0:
-#                     last_center_reading = 0
-#                 time_90 = time.time() - starttime
-#             self.setvel(0,0)
-#             time.sleep(0.2)
-#             if counter == 0:
-#                 paths.append(False)
-                
-        
-        # want [forward, left, backward, right]
-        # reads [forward, right, back, left]
-#         print(intersectiontimes)
-#         paths = [False, False, False, False]
-#         for t in intersectiontimes:
-#             inter_num = round(4*t/time_full_rot)
-#             paths[inter_num] = True\
-
-        # Current reads in the order of [
         paths_reorder = [paths[3],paths[2], paths[1], paths[0]]
-        # paths reorder = paths[::-1]
         return paths_reorder
                 
-        
+    def stupidlinefollow(self):
+        vel_nom = 0.4
+        rad_small = 20*math.pi/180
+        rad_large = 40*math.pi/180
+        exitcond = True
+        state = 'C'
+        while exitcond:
+            # Reading IR Sensors
+            ir_left_state = self.io.read(IR_LEFT)
+            ir_center_state = self.io.read(IR_CENTER)
+            ir_right_state = self.io.read(IR_RIGHT)
+            
+            # Setting motor states
+            if (ir_left_state == 0 and ir_center_state == 1 and ir_right_state == 0): # centered
+                self.setvel(vel_nom, 0)
+                if state == 'C':
+                    exitcond = False
+                state = 'C'
+            elif (ir_left_state == 0 and ir_center_state == 1 and ir_right_state == 1): # slight left
+                self.setvel(vel_nom, math.sin(rad_large)*vel_nom/0.125)
+                state = 'L'
+            elif (ir_left_state == 0 and ir_center_state == 0 and ir_right_state == 1): # more left
+                self.setvel(vel_nom, math.sin(rad_large)*vel_nom/0.125)
+                state = 'L'
+            elif (ir_left_state == 0 and ir_center_state == 0 and ir_right_state == 0): # 3 cases
+                if (state == 'L'): # complete left
+                    self.setspin(400)
+                    state = 'L'
+                elif (state == 'R'): # complete right
+                    self.setspin(-1*400)
+                    state = 'R'
+                else: # past the end and centered
+                    self.setspin(400)
+                    # state = 'C'
+            elif (ir_left_state == 1 and ir_center_state == 1 and ir_right_state == 0): # slight right
+                state = 'R'
+                self.setvel(vel_nom, -1*math.sin(rad_large)*vel_nom/0.125)
+            elif (ir_left_state == 1 and ir_center_state == 0 and ir_right_state == 0): # more right
+                state = 'R'
+                self.setvel(vel_nom, -1*math.sin(rad_large)*vel_nom/0.125)
+    
+    
     def linefollow(self):
         vel_nom = 0.4
         rad_small = 20*math.pi/180
@@ -378,25 +320,7 @@ class Motor:
                 # Reading IR Sensors
                 ir_left_state = self.io.read(IR_LEFT)
                 ir_center_state = self.io.read(IR_CENTER)
-                ir_right_state = self.io.read(IR_RIGHT)
-                
-#                 if (lost_counter >= 200): #detects if the robot is lost after set number of cycles
-#                     searching = True
-#                     lost_counter = 0
-#                 
-#                 if (searching):
-#                     print("lost")
-#                     if angularspeed > 0.0001: # must maintain an angular speed greater than 0 to keep circling
-#                         angularspeed -= 0.0001
-#                     self.setvel(0.3, angularspeed) 
-#                     if (ir_left_state == 1 or ir_right_state == 1 or ir_center_state == 1):
-#                         searching = False
-#                     continue
-#                 
-#                 print("left: " , ir_left_state)
-#                 print("center: " , ir_center_state)
-#                 print("right: " , ir_right_state)
-                
+                ir_right_state = self.io.read(IR_RIGHT)              
                 # Setting motor states
                 if (ir_left_state == 0 and ir_center_state == 1 and ir_right_state == 0): # centered
                     self.setvel(vel_nom, 0)
@@ -462,51 +386,87 @@ if __name__ == "__main__":
     def headback():
         global intersections
         global heading
+        global long
+        global lat
         print("heading back")
         for i in range(len(intersections)-1, 0,-1):
-            # print("heading: ", heading)
             motor.spintonextline((intersections[i].headingToTarget - heading)%4)
             heading = intersections[i].headingToTarget
             motor.linefollow()
-        motor.spintonextline((SOUTH-heading)%4)
-        heading = SOUTH
-        motor.linefollow()
+#         motor.spintonextline((SOUTH-heading)%4)
+#         heading = SOUTH
+#         motor.linefollow()
+        motor.spintonextline((NORTH - heading)%4)
+        long = 0
+        lat = 0
+        heading = NORTH
             
+    def heading_to_target():
+        global heading
+        global lat
+        global long
+        current_intersection = intersection(long,lat)
+        while current_intersection.headingToTarget != None:
+            motor.spintonextline((current_intersection.headingToTarget - heading)%4)
+            heading = current_intersection.headingToTarget
+            motor.linefollow()
+            (long, lat) = shift(long, lat, heading)
+            current_intersection = intersection(long,lat)
+        motor.setvel(0,0)
+        time.sleep(0.2)
+        
+    def cycle_deadends():
+        print("enter deadend")
+        global intersections
+        global long
+        global lat
+        
+        deadends = []
+        
+        for i in intersections:
+            nostreets = 0
+            connecteds = 0
+            for street in i.streets:
+                if street == NOSTREET:
+                    nostreets += 1
+                elif street == CONNECTED:
+                    connecteds += 1
+            if connecteds == 1 and nostreets == 3:
+                deadends.append(i)
+        
+        for i in range(len(deadends)):
+            djikstra(intersection(long,lat),deadends[i])
+            heading_to_target()
+            
+    
     def trackmap():
-        motor.linefollow()
         global heading
         global long
         global lat
         global lastintersection
-        (long, lat) = shift(long, lat, heading)
-        print("Currently at (%2d, %2d)" % (long, lat))
         global intersections
+        motor.linefollow()
+        (long, lat) = shift(long, lat, heading)
         if intersection(long, lat) == None:
             inter = Intersection(long, lat)
             intersections.append(inter) # append
             paths = motor.spincheck()
             inter.streets = convertabsolute(paths)
-            inter.headingToTarget = (heading+2)%4
+            if lastintersection != None:
+                inter.headingToTarget = (heading+2)%4
         if lastintersection != None:
             inter = intersection(long,lat)
+#             if lastintersection.headingToTarget == heading and inter.headingToTarget == None:
+#                 i = inter.streets.index(CONNECTED)
+#                 if i == (heading+2)%4: # will be the case and cause a loop where two headingToTarget's point at each other
+#                     i = inter.streets.index(CONNECTED, i+1, 3)
+#                 inter.headingToTarget == i
+            if inter.headingToTarget == None:
+                inter.headingToTarget = (heading+2)%4
             lastintersection.streets[heading] = CONNECTED
             inter.streets[(heading+2)%4] = CONNECTED
             # THIS IS SKETCH, ONLY TO HEAD BACK TO TARGET ROUND 1
             """# inter.headingToTarget = (heading+2)%4"""
-            print("Current latitude: ", inter.lat, " and Current longitude: ", inter.long)
-            print("headingToTarget: ", inter.headingToTarget)
-            
-#             k = 0
-#             for i in range(0,len(inter.streets)):
-#                 if inter.streets[i] == UNEXPLORED:
-#                     k = i
-#                     break
-#             while inter.streets[k] == NOSTREET: # All streets are either NOSTREET or CONNECTED
-#                 k = random.randint(0,len(inter.streets)-1) # Must be a CONNECTED street
-#             motor.spintonextline((k-heading)%4)
-#             heading = k
-#             lastintersection = inter
-        
         k = random.randint(0,len(intersection(long,lat).streets)-1)
         allc = True
         for i in range(0,len(intersection(long,lat).streets)):
@@ -515,6 +475,7 @@ if __name__ == "__main__":
                 break
         if allc:
             k = intersection(long,lat).headingToTarget
+            print("All streets at this intersection are connected. Heading to target.")
         else:
             for i in range(0,len(intersection(long,lat).streets)):
                 if intersection(long,lat).streets[i] == UNEXPLORED:
@@ -522,12 +483,78 @@ if __name__ == "__main__":
                     break
             while intersection(long,lat).streets[k] == NOSTREET: # All streets are either NOSTREET or CONNECTED
                 k = random.randint(0,len(intersection(long,lat).streets)-1) # Must be a CONNECTED street
+        # Labeling deadends
+#         nostreets = 0
+#         connecteds = 0
+#         print("inter.streets: ", inter.streets)
+#         for street in inter.streets:
+#             if street == NOSTREET:
+#                 nostreets += 1
+#             elif street == CONNECTED:
+#                 connecteds += 1
+#         print("nostreets: ",nostreets, " connecteds: ", connecteds)
+#         if connecteds == 1 and nostreets == 3:
+#             deadends.append(inter)
+            
         motor.spintonextline((k-heading)%4)
         heading = k
         lastintersection = intersection(long,lat)
-        print(intersection(long,lat).streets)
-
+            
+    def djikstra(start, goal):
+        global intersections
+        to_be_processed = []
+        print("entered dykstra")
+        for inter in intersections:
+            inter.headingToTarget = None
+        to_be_processed.append(goal)
+        temp_target = to_be_processed.pop(0)
+        stop_cond = False
+        while temp_target.lat != start.lat or temp_target.long != start.long:
+            for i in range(0,len(temp_target.streets)):
+                # getting neighbors
+                if i == 0:
+                    checking_intersection = intersection(temp_target.long,temp_target.lat+1)
+                elif i == 1:
+                    checking_intersection = intersection(temp_target.long-1,temp_target.lat)
+                elif i == 2:
+                    checking_intersection = intersection(temp_target.long,temp_target.lat-1)
+                elif i == 3:
+                    checking_intersection = intersection(temp_target.long+1,temp_target.lat)    
+    
+                if temp_target.streets[i] == CONNECTED and checking_intersection.headingToTarget == None:
+                    checking_intersection.headingToTarget = (i+2)%4 # point toward temp_target
+                    if checking_intersection.long == goal.long and checking_intersection.lat == goal.lat:
+                        checking_intersection.headingToTarget = None
+                    if checking_intersection.long == start.long and checking_intersection.lat == start.lat:
+                        # checking_intersection.headingToTarget = None
+                        to_be_processed.append(checking_intersection)
+                        stop_cond = True
+                        break
+                    else:
+                        to_be_processed.append(checking_intersection)
+            if stop_cond:
+                break
+            if len(to_be_processed) != 0:
+                temp_target = to_be_processed.pop(0)
+                
     try:
+        # Spiral to find the line to "kick off the session" -gunter
+        searching = True
+        angularspeed = 0.9
+        
+        while searching == True:
+            ir_left_state = motor.io.read(IR_LEFT)
+            ir_center_state = motor.io.read(IR_CENTER)
+            ir_right_state = motor.io.read(IR_RIGHT)
+            if (searching):
+                if angularspeed > 0.0001: # must maintain an angular speed greater than 0 to keep circling
+                    angularspeed -= 0.0000001
+                motor.setvel(0.3, angularspeed) 
+                if (ir_left_state == 1 or ir_right_state == 1 or ir_center_state == 1):
+                    searching = False
+                continue
+        motor.stupidlinefollow()
+        
         allConnected = False
         trackmap()
         while allConnected == False:
@@ -541,7 +568,14 @@ if __name__ == "__main__":
             trackmap()
             print(intersections)
         headback()
+        
+#         goal_long = input("longitude: ")
+#         goal_lat = input("latitude: ")
+#         time.sleep(3)
+#         djikstra(intersection(0,0),intersection(int(goal_long), int(goal_lat)))
+#         heading_to_target()
+        cycle_deadends()
         motor.shutdown()
     except KeyboardInterrupt:
         motor.setvel(0,0)
-        
+    
