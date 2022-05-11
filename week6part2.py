@@ -44,7 +44,7 @@ heading = NORTH # current heading
 
 turning = False
 turning2 = False
-rightturntime = 0.6
+rightturntime = 0.57
 
 # New longitude/latitude value after a step in the given heading.
 
@@ -182,7 +182,8 @@ class Motor:
         # slopeavg = 1/0.600465
         slope1 = 1/0.552776
         slope2 = 1/0.656167
-        self.set(speed*slope1, speed*slope2)
+#         self.set(speed*slope1, speed*slope2)
+        self.set(speed*slope1, speed*slope1)
         
     def setspin(self, speed):
         """
@@ -200,8 +201,9 @@ class Motor:
             T = 2*math.pi/spin
             v_outer = math.pi*(d+width)/T
             v_inner = math.pi*(d-width)/T
-            self.set(v_outer*1/0.552776, v_inner*1/0.656167)
-    
+#              self.set(v_outer*1/0.552776, v_inner*1/0.656167)
+            self.set(v_outer*1/0.552776, v_inner*1/0.552776)
+
     def turn_90(self):
         starttime = time.time()
         global turning
@@ -304,6 +306,8 @@ class Motor:
             elif (ir_left_state == 1 and ir_center_state == 0 and ir_right_state == 0): # more right
                 state = 'R'
                 self.setvel(vel_nom, -1*math.sin(rad_large)*vel_nom/0.125)
+            elif (ir_left_state == 1 and ir_center_state == 1 and ir_right_state == 1):
+                time.sleep(0.01)
     
     
     def linefollow(self):
@@ -346,7 +350,8 @@ class Motor:
                     self.setvel(0,0)
                     exitcond = True
                 elif (ir_left_state == 1 and ir_center_state == 1 and ir_right_state == 1): # seeing intersection
-                    time.sleep(0.53)
+                    self.setlinear(vel_nom)
+                    time.sleep(0.42)
                     self.setvel(0,0)
                     exitcond = True
                 else: # special case 101 where you can do anything
@@ -368,6 +373,7 @@ if __name__ == "__main__":
     ############################################################
     
     motor = Motor()
+    
     
     def convertabsolute(paths):
         # paths input is [Forward, Left, Backward, Right]
@@ -474,8 +480,10 @@ if __name__ == "__main__":
                 allc = False
                 break
         if allc:
-            k = intersection(long,lat).headingToTarget
-            print("All streets at this intersection are connected. Heading to target.")
+            # k = intersection(long,lat).headingToTarget
+            k = random.randint(0,3)
+            while intersection(long,lat).streets[k] == NOSTREET:
+                k = random.randint(0,3)
         else:
             for i in range(0,len(intersection(long,lat).streets)):
                 if intersection(long,lat).streets[i] == UNEXPLORED:
@@ -538,6 +546,7 @@ if __name__ == "__main__":
                 temp_target = to_be_processed.pop(0)
                 
     try:
+
         # Spiral to find the line to "kick off the session" -gunter
         searching = True
         angularspeed = 0.9
@@ -554,6 +563,7 @@ if __name__ == "__main__":
                     searching = False
                 continue
         motor.stupidlinefollow()
+         
         
         allConnected = False
         trackmap()
@@ -567,13 +577,15 @@ if __name__ == "__main__":
                         print(i.streets.index(s))
             trackmap()
             print(intersections)
-        headback()
         
+#         prompt user to enter spiral
 #         goal_long = input("longitude: ")
 #         goal_lat = input("latitude: ")
 #         time.sleep(3)
 #         djikstra(intersection(0,0),intersection(int(goal_long), int(goal_lat)))
 #         heading_to_target()
+
+        time.sleep(3)
         cycle_deadends()
         motor.shutdown()
     except KeyboardInterrupt:
