@@ -13,6 +13,7 @@ import time
 import math
 import random
 import statistics
+import threading
 # Define the motor pins.
 MTR1_LEGA = 7   #right
 MTR1_LEGB = 8
@@ -53,6 +54,7 @@ heading = NORTH # current heading
 turning = False
 turning2 = False
 rightturntime = 0.57
+front_object = False
 
 # New longitude/latitude value after a step in the given heading.
 
@@ -96,10 +98,11 @@ class Ultrasonic:
         
         self.triggerpin = triggerpin
         self.echopin = echopin
-        self.start_time = time.time()
+        self.start_time = 0
         self.object_present = False
-        self.stop_distance = 0.2
+        self.stop_distance = 0.3
         self.distance = 0
+        self.stopflag = False
         
         self.io.set_mode(triggerpin, pigpio.OUTPUT)
         self.io.set_mode(echopin, pigpio.INPUT)
@@ -121,6 +124,15 @@ class Ultrasonic:
         self.io.write(self.triggerpin, 1)
         time.sleep(0.00001)
         self.io.write(self.triggerpin, 0)
+        
+    def stopcontinual(self):
+        self.stopflag = True
+        
+    def runcontinual(self):
+        self.stopflag = False
+        while not self.stopflag:
+            self.trigger()
+            time.sleep(0.05 + 0.01*random.random())
         
 
 class Intersection:
@@ -232,6 +244,7 @@ class Motor:
     def setspin(self, speed):
         """
         Speed is given in degrees per second.
+        positive is clowckwise, negative is ccw
         """
         slope = 1/469.19
         self.set(speed*slope, -1*speed*slope)
@@ -353,72 +366,13 @@ class Motor:
             elif (ir_left_state == 1 and ir_center_state == 1 and ir_right_state == 1):
                 time.sleep(0.01)
     
-    def linefollow(self):
-        global front_object
-        global ultrastarttime
-        vel_nom = 0.4
-        rad_small = 20*math.pi/180
-        rad_large = 40*math.pi/180
-        state = 'C'
-        searching = True
-        angularspeed = 0.9
-        lost_counter = 0
-        exitcond = False
-        lasttime = time.time()
-
-        try:
-            global ultrastarttime
-            while not exitcond:
-                if time.time() - lasttime > 0.1:
-                    left_us.trigger()
-                    center_us.trigger()
-                    right_us.trigger()
-                    lasttime = time.time()
-                    
-                # Reading IR Sensors
-                ir_left_state = self.io.read(IR_LEFT)
-                ir_center_state = self.io.read(IR_CENTER)
-                ir_right_state = self.io.read(IR_RIGHT)              
-                # Setting motor states
-                if front_object:
-                    self.setvel(0,0)
-                elif (ir_left_state == 0 and ir_center_state == 1 and ir_right_state == 0): # centered
-                    self.setvel(vel_nom, 0)
-                    lost_counter = 0
-                    state = 'C'
-                elif (ir_left_state == 0 and ir_center_state == 1 and ir_right_state == 1): # slight left
-                    self.setvel(vel_nom, math.sin(rad_small)*vel_nom/0.125)
-                    lost_counter = 0
-                    state = 'L'
-                elif (ir_left_state == 0 and ir_center_state == 0 and ir_right_state == 1): # more left
-                    self.setvel(vel_nom, math.sin(rad_large)*vel_nom/0.125)
-                    lost_counter = 0
-                    state = 'L'
-                elif (ir_left_state == 1 and ir_center_state == 1 and ir_right_state == 0): # slight right
-                    lost_counter = 0
-                    state = 'R'
-                    self.setvel(vel_nom, -1*math.sin(rad_small)*vel_nom/0.125)
-                elif (ir_left_state == 1 and ir_center_state == 0 and ir_right_state == 0): # more right
-                    lost_counter = 0
-                    state = 'R'
-                    self.setvel(vel_nom, -1*math.sin(rad_large)*vel_nom/0.125)
-                elif (ir_left_state == 0 and ir_center_state == 0 and ir_right_state == 0): # passed end or pushed off
-                    self.setvel(0,0)
-                    exitcond = True
-                elif (ir_left_state == 1 and ir_center_state == 1 and ir_right_state == 1): # seeing intersection
-                    self.setlinear(vel_nom)
-                    time.sleep(0.42)
-                    self.setvel(0,0)
-                    exitcond = True
-
-        except KeyboardException as ex1:
-            self.setvel(0,0)
-        
-        except BaseException as ex2:
-            # Print infor to help ebug.
-            print("Ending due to exception: %s" % repr(ex2))
-            traceback.print_exc()
-        
+    def wall_follow(self, u):
+#         PWM_left = max(0.5, min(0.9,0.7-u))
+#         PWM_right = max(0.5, min(0.9, 0.7+u))
+        PWM_left = max(0.5, min(0.9,0.7-u))
+        PWM_right = max(0.5, min(0.9, 0.7+u))
+        self.set(PWM_left, PWM_right)
+        time.sleep(0.1)
     
     def readSensors(self):
         left = self.io.read(IR_LEFT)
@@ -437,7 +391,21 @@ if __name__ == "__main__":
     left_us = Ultrasonic(ULTRA1_TRIGGER, ULTRA1_ECHO)
     center_us = Ultrasonic(ULTRA2_TRIGGER, ULTRA2_ECHO)
     right_us = Ultrasonic(ULTRA3_TRIGGER, ULTRA3_ECHO)
+#     stopflag = False
     
+#     def stopcontinual():
+#         stopflag = True
+#         
+#     def runcontinual(self):
+#         print("entered runcontinual")
+#         stopflag = False
+#         while not stopflag:
+#             center_us.trigger()
+#             left_us.trigger()
+#             right_us.trigger()
+#             time.sleep(0.8 + 0.4*random.random())
+            
+        
     
     def convertabsolute(paths):
         # paths input is [Forward, Left, Backward, Right]
@@ -462,7 +430,7 @@ if __name__ == "__main__":
         for i in range(len(intersections)-1, 0,-1):
             motor.spintonextline((intersections[i].headingToTarget - heading)%4)
             heading = intersections[i].headingToTarget
-            motor.linefollow()
+            linefollow(motor, center_us)
         motor.spintonextline((NORTH - heading)%4)
         long = 0
         lat = 0
@@ -476,7 +444,7 @@ if __name__ == "__main__":
         while current_intersection.headingToTarget != None:
             motor.spintonextline((current_intersection.headingToTarget - heading)%4)
             heading = current_intersection.headingToTarget
-            motor.linefollow()
+            linefollow(motor, center_us)
             (long, lat) = shift(long, lat, heading)
             current_intersection = intersection(long,lat)
         motor.setvel(0,0)
@@ -503,8 +471,88 @@ if __name__ == "__main__":
         
         for i in range(len(deadends)):
             djikstra(intersection(long,lat),deadends[i])
-            heading_to_target()
-            
+            heading_to_target()           
+    
+    def ultraturn(motor, l, c, r):
+        """
+        motor, a motor object
+        l, left ultrasonic object
+        c, center ultrasonic object
+        r, right ultrasonic object
+        """
+        
+        vel_nom = 0.45
+        rad_small = 20*math.pi/180
+        rad_large = 40*math.pi/180
+        try:
+            while True:
+                # Reading IR Sensors
+                if (not l.object_present and c.object_present and not r.object_present): # 010
+                    motor.setvel(-1*vel_nom, 0)
+                elif (not l.object_present and c.object_present and r.object_present): # 011
+                    motor.setspin(-300)
+                elif (not l.object_present and not c.object_present and r.object_present): # 001
+                    motor.setspin(-300)
+                elif (l.object_present and c.object_present and not r.object_present): # 110
+                    motor.setspin(300)
+                elif (l.object_present and not c.object_present and not r.object_present): # 100
+                    motor.setspin(300)
+                elif (not l.object_present and not c.object_present and not r.object_present): # 000
+                    motor.setvel(vel_nom, 0)
+                elif (l.object_present and c.object_present and r.object_present): # 111
+                    motor.setspin(300)
+                else: # 101
+                    motor.setvel(vel_nom, 0)
+        except BaseException as ex:
+                print("Ending due to exception: %s" % repr(ex))
+                
+    def linefollow(motor, ultra):
+        vel_nom = 0.4
+        rad_small = 20*math.pi/180
+        rad_large = 40*math.pi/180
+        state = 'C'
+        exitcond = False
+        try:
+            while not exitcond:
+                # Reading IR Sensors
+                ir_left_state = motor.io.read(IR_LEFT)
+                ir_center_state = motor.io.read(IR_CENTER)
+                ir_right_state = motor.io.read(IR_RIGHT)
+                print(ultra.distance)
+                # Setting motor states
+                print(ultra.object_present)
+                if ultra.object_present:
+                    motor.setvel(0,0)
+                elif (ir_left_state == 0 and ir_center_state == 1 and ir_right_state == 0): # centered
+                    motor.setvel(vel_nom, 0)
+                    lost_counter = 0
+                    state = 'C'
+                elif (ir_left_state == 0 and ir_center_state == 1 and ir_right_state == 1): # slight left
+                    motor.setvel(vel_nom, math.sin(rad_small)*vel_nom/0.125)
+                    lost_counter = 0
+                    state = 'L'
+                elif (ir_left_state == 0 and ir_center_state == 0 and ir_right_state == 1): # more left
+                    motor.setvel(vel_nom, math.sin(rad_large)*vel_nom/0.125)
+                    lost_counter = 0
+                    state = 'L'
+                elif (ir_left_state == 1 and ir_center_state == 1 and ir_right_state == 0): # slight right
+                    lost_counter = 0
+                    state = 'R'
+                    motor.setvel(vel_nom, -1*math.sin(rad_small)*vel_nom/0.125)
+                elif (ir_left_state == 1 and ir_center_state == 0 and ir_right_state == 0): # more right
+                    lost_counter = 0
+                    state = 'R'
+                    motor.setvel(vel_nom, -1*math.sin(rad_large)*vel_nom/0.125)
+                elif (ir_left_state == 0 and ir_center_state == 0 and ir_right_state == 0): # passed end or pushed off
+                    motor.setvel(0,0)
+                    exitcond = True
+                elif (ir_left_state == 1 and ir_center_state == 1 and ir_right_state == 1): # seeing intersection
+                    motor.setlinear(vel_nom)
+                    time.sleep(0.42)
+                    motor.setvel(0,0)
+                    exitcond = True
+        except BaseException as ex:
+                print("Ending due to exception: %s" % repr(ex)) 
     
     def trackmap():
         global heading
@@ -515,7 +563,7 @@ if __name__ == "__main__":
         lasttime = time.time()
         global ultrastarttime
         
-        motor.linefollow()
+        linefollow(motor, center_us)
         (long, lat) = shift(long, lat, heading)
         if intersection(long, lat) == None:
             inter = Intersection(long, lat)
@@ -550,6 +598,7 @@ if __name__ == "__main__":
         motor.spintonextline((k-heading)%4)
         heading = k
         lastintersection = intersection(long,lat)
+        
             
     def djikstra(start, goal):
         global intersections
@@ -587,14 +636,60 @@ if __name__ == "__main__":
                 break
             if len(to_be_processed) != 0:
                 temp_target = to_be_processed.pop(0)
-                
+    
+#     thread = threading.Thread(target=runcontinual)
+    thread_left = threading.Thread(target=left_us.runcontinual)
+    thread_center = threading.Thread(target=center_us.runcontinual)
+    thread_right = threading.Thread(target=right_us.runcontinual)
+    thread_left.start()
+    thread_center.start()
+    thread_right.start()
+    k = 0.5
+    # k = 3
+    # k = 0.03
+    
     try:
-        while (True):
-            center_us.trigger()
-            time.sleep(0.1)
-            print("dist: ", center_us.distance)
+#         center_us.trigger()
+#         while True:      
+#             while right_us.distance < 1:
+#                 while center_us.distance < 0.2:
+#                     print("turning")
+#                     while center_us.object_present:
+#                         # ultraturn(motor, left_us, center_us, right_us)
+#                         motor.setspin(-300)
+#                     time.sleep(0.6)
+#                 e = right_us.distance - right_us.stop_distance
+#                 motor.wall_follow(-1*k*e)
+#             while not right_us.object_present:
+#                 ultraturn(motor, left_us, center_us, right_us)
+                #motor.setvel(0.4,0.4/(right_us.stop_distance - 0.1))
+
+        # herding, problem 6
+        # ultraturn(motor, left_us, center_us, right_us)
         
-        motor.shutdown()
+        # wall follow problem 7
+        # while right_us.distance < 1:
+        while True:
+            e = right_us.distance - right_us.stop_distance
+            motor.wall_follow(-1*k*e)
+        motor.setvel(0.4,0.4/right_us.stop_distance)
+        
+            
+
+            #print("dist: ", [left_us.distance, center_us.distacnce, right_us.distance])
+        
+    except BaseException as ex:
+        print("Ending due to exception: %s" % repr(ex))
         
     except KeyboardInterrupt:
         motor.setvel(0,0)
+        
+#     stopcontinual()
+    left_us.stopcontinual()
+    center_us.stopcontinual()
+    right_us.stopcontinual()
+    thread_left.join()
+    thread_center.join()
+    thread_right.join()
+     
+    motor.shutdown()
